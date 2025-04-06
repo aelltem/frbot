@@ -22,18 +22,24 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    def safe_reply(text):
+        if query.message.text:
+            return query.edit_message_text(text)
+        else:
+            return query.message.reply_text(text)
+
     if query.data == 'search_by_kadnum':
-        await query.edit_message_text("Введите кадастровый номер:")
+        await safe_reply("Введите кадастровый номер:")
         context.user_data['state'] = 'awaiting_kadnum'
     elif query.data == 'search_by_address':
-        await query.edit_message_text("Введите адрес или координаты:")
+        await safe_reply("Введите адрес или координаты:")
         context.user_data['state'] = 'awaiting_address'
     elif query.data == 'show_land':
-        await query.edit_message_text("🔍 Участок здания:\nКадастр: 77:01:000401:777\nПлощадь: 2 400 м²\nНазначение: коммерческое")
+        await safe_reply("🔍 Участок здания:\nКадастр: 77:01:000401:777\nПлощадь: 2 400 м²\nНазначение: коммерческое")
     elif query.data == 'show_units':
-        await query.edit_message_text("📦 Помещения внутри здания:\n1. 77:01:000401:111 — 120 м² — офис\n2. 77:01:000401:112 — 95 м² — магазин\n3. 77:01:000401:113 — 180 м² — кафе")
+        await safe_reply("📦 Помещения внутри здания:\n1. 77:01:000401:111 — 120 м² — офис\n2. 77:01:000401:112 — 95 м² — магазин\n3. 77:01:000401:113 — 180 м² — кафе")
     elif query.data == 'check_risks':
-        await query.edit_message_text("🛑 Риски:\n- Вид использования: допустим\n- Площадь подходит под коммерческое использование\n- Не находится в охранной зоне (по открытым данным)")
+        await safe_reply("🛑 Риски:\n- Вид использования: допустим\n- Площадь подходит под коммерческое использование\n- Не находится в охранной зоне (по открытым данным)")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = context.user_data.get('state')
