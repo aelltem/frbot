@@ -1,5 +1,5 @@
-python-telegram-bot==20.3
-requests
+python-telegram-bot==20.7
 pandas
-fpdf
 openpyxl
+fpdf
+httpx
