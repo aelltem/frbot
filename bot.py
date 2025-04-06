@@ -1,3 +1,4 @@
+import os
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
@@ -84,7 +85,11 @@ async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE, add
         await update.message.reply_text("Произошла ошибка при обработке запроса.")
 
 def main():
-    app = ApplicationBuilder().token("YOUR_TELEGRAM_BOT_TOKEN").build()
+    token = os.getenv("YOUR_TELEGRAM_BOT_TOKEN")
+    if not token:
+        raise ValueError("Переменная окружения YOUR_TELEGRAM_BOT_TOKEN не установлена")
+
+    app = ApplicationBuilder().token(token).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
