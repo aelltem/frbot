@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Моковые данные помещений
 all_units = [
-    {"kadnum": f"77:01:000401:{100 + i}", "area": 80 + i * 5, "type": "нежилое", "usage": "офис"} for i in range(25)
+    {"kadnum": f"77:01:000401:{100 + i}", "area": 80 + i * 5, "type": "нежилое" if i % 2 == 0 else "жилое", "usage": "офис" if i % 3 else "магазин"} for i in range(25)
 ]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -58,16 +58,17 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_units_page(query, context, page):
     page_size = 10
+    units_sorted = sorted(all_units, key=lambda x: (x['type'] != 'нежилое', x['usage']))
     start = page * page_size
     end = start + page_size
-    units = all_units[start:end]
+    units = units_sorted[start:end]
 
     if not units:
         await query.message.reply_text("Нет данных на этой странице")
         return
 
     text = "📦 Помещения внутри здания (стр. {}/{}):\n".format(
-        page + 1, (len(all_units) - 1) // page_size + 1
+        page + 1, (len(units_sorted) - 1) // page_size + 1
     )
     for u in units:
         text += f"\n📄 {u['kadnum']}\n🏠 {u['area']} м² — {u['usage']} — {u['type']}\n"
@@ -75,7 +76,7 @@ async def show_units_page(query, context, page):
     buttons = []
     if page > 0:
         buttons.append(InlineKeyboardButton("⬅ Назад", callback_data=f"show_units:{page - 1}"))
-    if end < len(all_units):
+    if end < len(units_sorted):
         buttons.append(InlineKeyboardButton("➡ Далее", callback_data=f"show_units:{page + 1}"))
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
 
