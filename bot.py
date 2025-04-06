@@ -10,6 +10,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Моковые данные помещений
+all_units = [
+    {"kadnum": f"77:01:000401:{100 + i}", "area": 80 + i * 5, "type": "нежилое", "usage": "офис"} for i in range(25)
+]
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🔍 Информация по кадастровому номеру", callback_data='search_by_kadnum')],
@@ -35,11 +40,49 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply("Введите адрес или координаты:")
         context.user_data['state'] = 'awaiting_address'
     elif query.data == 'show_land':
-        await safe_reply("🔍 Участок здания:\nКадастр: 77:01:000401:777\nПлощадь: 2 400 м²\nНазначение: коммерческое")
-    elif query.data == 'show_units':
-        await safe_reply("📦 Помещения внутри здания:\n1. 77:01:000401:111 — 120 м² — офис\n2. 77:01:000401:112 — 95 м² — магазин\n3. 77:01:000401:113 — 180 м² — кафе")
+        text = (
+            "🌍 Земельный участок:\n"
+            "Тип: Земельный участок\n"
+            "Год постройки: 2005\n"
+            "Площадь: 2 400 м²\n"
+            "Назначение: Коммерческое\n"
+            "ВРИ: Для офисной застройки\n"
+            "Собственник: физ. лицо"
+        )
+        await safe_reply(text)
+    elif query.data.startswith('show_units'):
+        page = int(query.data.split(':')[1]) if ':' in query.data else 0
+        await show_units_page(query, context, page)
     elif query.data == 'check_risks':
         await safe_reply("🛑 Риски:\n- Вид использования: допустим\n- Площадь подходит под коммерческое использование\n- Не находится в охранной зоне (по открытым данным)")
+
+async def show_units_page(query, context, page):
+    page_size = 10
+    start = page * page_size
+    end = start + page_size
+    units = all_units[start:end]
+
+    if not units:
+        await query.message.reply_text("Нет данных на этой странице")
+        return
+
+    text = "📦 Помещения внутри здания (стр. {}/{}):\n".format(
+        page + 1, (len(all_units) - 1) // page_size + 1
+    )
+    for u in units:
+        text += f"\n📄 {u['kadnum']}\n🏠 {u['area']} м² — {u['usage']} — {u['type']}\n"
+
+    buttons = []
+    if page > 0:
+        buttons.append(InlineKeyboardButton("⬅ Назад", callback_data=f"show_units:{page - 1}"))
+    if end < len(all_units):
+        buttons.append(InlineKeyboardButton("➡ Далее", callback_data=f"show_units:{page + 1}"))
+    reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
+
+    if query.message.text:
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    else:
+        await query.message.reply_text(text, reply_markup=reply_markup)
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = context.user_data.get('state')
@@ -55,8 +98,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_kadnum(update: Update, context: ContextTypes.DEFAULT_TYPE, kadnum: str):
     info = f"Объект с кадастровым номером {kadnum}\nТип: Здание\nПлощадь: 1200 м²\nНазначение: Офис\n📞 Телефон УК: +7 (495) 123-45-67"
     keyboard = [
-        [InlineKeyboardButton("🌍 Участок здания", callback_data='show_land')],
-        [InlineKeyboardButton("📦 Помещения внутри", callback_data='show_units')],
+        [InlineKeyboardButton("🌍 Земельный участок", callback_data='show_land')],
+        [InlineKeyboardButton("📦 Помещения внутри", callback_data='show_units:0')],
         [InlineKeyboardButton("🛑 Проверка рисков", callback_data='check_risks')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
