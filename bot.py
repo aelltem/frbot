@@ -1,6 +1,6 @@
 import os
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 import requests
 from io import BytesIO
@@ -56,13 +56,17 @@ async def handle_kadnum(update: Update, context: ContextTypes.DEFAULT_TYPE, kadn
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     lat, lon = 55.751244, 37.618423
-    map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={lat},{lon}&zoom=17&size=600x400&markers={lat},{lon},red"
-    response = requests.get(map_url)
-    if response.status_code == 200:
-        image = BytesIO(response.content)
-        await update.message.reply_photo(photo=image, caption=info, reply_markup=reply_markup)
-    else:
-        await update.message.reply_text(info, reply_markup=reply_markup)
+    map_url = f"https://static-maps.yandex.ru/1.x/?ll={lon},{lat}&z=17&size=600,400&l=map&pt={lon},{lat},pm2rdm"
+    try:
+        response = requests.get(map_url)
+        if response.status_code == 200:
+            image = BytesIO(response.content)
+            await update.message.reply_photo(photo=image, caption=info, reply_markup=reply_markup)
+            return
+    except Exception as e:
+        logger.error(f"Ошибка загрузки карты: {e}")
+
+    await update.message.reply_text(info + f"\n\nКарта недоступна, координаты: {lat}, {lon}", reply_markup=reply_markup)
 
 async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE, address: str):
     try:
@@ -73,13 +77,13 @@ async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE, add
             await update.message.reply_text("Ничего не найдено по данному адресу.")
             return
         lat, lon = data[0]["lat"], data[0]["lon"]
-        map_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={lat},{lon}&zoom=17&size=600x400&markers={lat},{lon},red"
-        map_response = requests.get(map_url)
-        if map_response.status_code == 200:
-            image = BytesIO(map_response.content)
+        map_url = f"https://static-maps.yandex.ru/1.x/?ll={lon},{lat}&z=17&size=600,400&l=map&pt={lon},{lat},pm2rdm"
+        response = requests.get(map_url)
+        if response.status_code == 200:
+            image = BytesIO(response.content)
             await update.message.reply_photo(photo=image, caption=f"Координаты: {lat}, {lon}")
         else:
-            await update.message.reply_text(f"Координаты: {lat}, {lon}")
+            await update.message.reply_text(f"Координаты: {lat}, {lon}\n(Карта недоступна)")
     except Exception as e:
         logger.error(f"Ошибка при поиске по адресу: {e}")
         await update.message.reply_text("Произошла ошибка при обработке запроса.")
