@@ -30,6 +30,26 @@ def haversine(lat1, lon1, lat2, lon2):
     a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
     c = 2 * atan2(sqrt(a), sqrt(1-a))
     return R * c
+    async def find_nearby_objects(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        text = update.message.text.strip()
+        lat, lon = map(float, text.split(","))
+        nearby = [
+            u for u in all_units
+            if haversine(lat, lon, u["lat"], u["lon"]) <= 0.3  # радиус 300 м
+        ]
+        if not nearby:
+            await update.message.reply_text("🔍 Поблизости объектов не найдено.")
+            return
+
+        reply = "🏘 Объекты рядом (до 300 м):\n"
+        for i, u in enumerate(nearby, 1):
+            reply += f"{i}. {u['kadnum']} | {u['area']} м² | {u['usage']} | {u['type']}\n"
+        await update.message.reply_text(reply)
+    except Exception as e:
+        logger.error(f"Ошибка при поиске соседей: {e}")
+        await update.message.reply_text("Ошибка: введите координаты в формате: широта,долгота")
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
