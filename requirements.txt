@@ -1,6 +1,5 @@
-python-telegram-bot==20.7
-pandas
-openpyxl
-fpdf
-httpx
+python-telegram-bot==20.5
 requests
+fpdf
+pandas
+rapidfuzz
