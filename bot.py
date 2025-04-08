@@ -154,7 +154,16 @@ async def process_selected_address(update: Update, context: ContextTypes.DEFAULT
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = json.loads(query.data)
+
+    if not query.data:
+        await query.message.reply_text("Ошибка: кнопка не содержит данных. Попробуйте ещё раз.")
+        return
+
+    try:
+        data = json.loads(query.data)
+    except json.JSONDecodeError:
+        await query.message.reply_text("Ошибка обработки кнопки. Попробуйте ещё раз.")
+        return
 
     if data.get("action") == "select_address":
         await process_selected_address(update, context, data)
