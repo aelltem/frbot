@@ -176,9 +176,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.message.reply_text("Выберите источник для сравнения:", reply_markup=InlineKeyboardMarkup(keyboard))
 
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Добро пожаловать! Введите адрес, чтобы получить информацию об объекте недвижимости.")
+
 app = ApplicationBuilder().token(os.getenv("TELEGRAM_BOT_TOKEN")).build()
+app.add_handler(CommandHandler("start", start_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_address))
 app.add_handler(CallbackQueryHandler(handle_callback))
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run_polling()
