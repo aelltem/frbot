@@ -8,7 +8,6 @@ from io import BytesIO
 import pandas as pd
 from fpdf import FPDF
 from math import radians, cos, sin, asin, sqrt
-from rapidfuzz import process
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 GEOCODER_URL = "https://geocode-maps.yandex.ru/1.x/"
-ROSREESTR_API_URL = "https://rosreestr-integration.example.com/api/v1/lookup"  # Условная ссылка
+ROSREESTR_API_URL = "https://rosreestr-integration.example.com/api/v1/lookup"
 
 async def fetch_coordinates(address):
     params = {
@@ -95,6 +94,43 @@ async def fetch_rosreestr_data(lat, lon):
         logger.error(f"Ошибка при обращении к Росреестру: {e}")
         return None
 
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [
+        [InlineKeyboardButton("Поиск по адресу", callback_data=json.dumps({"action": "search_by_address"}))],
+        [InlineKeyboardButton("Поиск по кадастровому номеру", callback_data=json.dumps({"action": "search_by_cadastral"}))]
+    ]
+    await update.message.reply_text("Выберите способ поиска:", reply_markup=InlineKeyboardMarkup(buttons))
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if not query.data:
+        await query.message.reply_text("Ошибка: кнопка не содержит данных. Попробуйте ещё раз.")
+        return
+
+    try:
+        data = json.loads(query.data)
+    except json.JSONDecodeError:
+        await query.message.reply_text("Ошибка обработки кнопки. Попробуйте ещё раз.")
+        return
+
+    action = data.get("action")
+    if action == "search_by_address":
+        await query.message.reply_text("Введите адрес:")
+    elif action == "search_by_cadastral":
+        await query.message.reply_text("Введите кадастровый номер:")
+    elif action == "select_address":
+        await process_selected_address(update, context, data)
+    elif action == "analogs":
+        lat, lon = data['lat'], data['lon']
+        keyboard = [
+            [InlineKeyboardButton("Авито", url=f"https://www.avito.ru/moskva/nedvizhimost?p=1&q=&location={lat}%2C{lon}"),
+             InlineKeyboardButton("Циан", url=f"https://www.cian.ru/cat.php?deal_type=sale&region=1&center={lon},{lat}"),
+             InlineKeyboardButton("Яндекс", url=f"https://realty.yandex.ru/moskva/?ll={lon}%2C{lat}&search_type=geo")]
+        ]
+        await query.message.reply_text("Выберите источник для сравнения:", reply_markup=InlineKeyboardMarkup(keyboard))
+
 async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
     if not user_input.lower().startswith("москва"):
@@ -125,7 +161,6 @@ async def process_selected_address(update: Update, context: ContextTypes.DEFAULT
         info_parts.append(f"Округ: {district}")
     if metro:
         info_parts.append(f"Ближайшее метро: {metro}")
-
     if rosreestr_data:
         if rosreestr_data.get('cadastral_number'):
             info_parts.append(f"Кадастровый номер: {rosreestr_data['cadastral_number']}")
@@ -133,51 +168,22 @@ async def process_selected_address(update: Update, context: ContextTypes.DEFAULT
             info_parts.append(f"Площадь: {rosreestr_data['area']} кв.м")
         if rosreestr_data.get('purpose'):
             info_parts.append(f"Назначение: {rosreestr_data['purpose']}")
-        if rosreestr_data.get('type') == 'land':
-            info_parts.append("Тип объекта: Земельный участок")
 
-    map_button = InlineKeyboardButton(
-        text="Показать на карте",
-        url=f"https://pkk.rosreestr.ru/#/?lat={lat}&lon={lon}&z=18"
+    buttons = [
+        [InlineKeyboardButton("Яндекс Карты", url=f"https://yandex.ru/maps/?ll={lon},{lat}&z=18"),
+         InlineKeyboardButton("Росреестр", url=f"https://pkk.rosreestr.ru/#/?lat={lat}&lon={lon}&z=18")],
+        [InlineKeyboardButton("Аналоги по цене и площади", callback_data=json.dumps({"action": "analogs", "lat": lat, "lon": lon}))],
+        [InlineKeyboardButton("Объекты внутри", callback_data="show_units")],
+        [InlineKeyboardButton("Земельный участок", callback_data="show_land")],
+        [InlineKeyboardButton("Выгрузить в PDF", callback_data="export_pdf"),
+         InlineKeyboardButton("Выгрузить в Excel", callback_data="export_excel")]
+    ]
+
+    await update.message.reply_photo(
+        photo=f"https://static-maps.yandex.ru/1.x/?lang=ru_RU&ll={lon},{lat}&z=16&size=450,250&l=map",
+        caption="\n".join(info_parts),
+        reply_markup=InlineKeyboardMarkup(buttons)
     )
-
-    analogs_button = InlineKeyboardButton(
-        text="Аналоги по цене и площади",
-        callback_data=json.dumps({"action": "analogs", "lat": lat, "lon": lon})
-    )
-
-    await update.message.reply_text(
-        "\n".join(info_parts),
-        reply_markup=InlineKeyboardMarkup([[map_button], [analogs_button]])
-    )
-
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if not query.data:
-        await query.message.reply_text("Ошибка: кнопка не содержит данных. Попробуйте ещё раз.")
-        return
-
-    try:
-        data = json.loads(query.data)
-    except json.JSONDecodeError:
-        await query.message.reply_text("Ошибка обработки кнопки. Попробуйте ещё раз.")
-        return
-
-    if data.get("action") == "select_address":
-        await process_selected_address(update, context, data)
-    elif data.get("action") == "analogs":
-        lat, lon = data['lat'], data['lon']
-        keyboard = [
-            [InlineKeyboardButton("Авито", url=f"https://www.avito.ru/moskva/kvartiry?lat={lat}&lng={lon}"),
-             InlineKeyboardButton("Циан", url=f"https://www.cian.ru/cat.php?deal_type=sale&engine_version=2&region=1&center={lon},{lat}"),
-             InlineKeyboardButton("Яндекс", url=f"https://realty.yandex.ru/moskva/?ll={lon}%2C{lat}&search_type=geo")]
-        ]
-        await query.message.reply_text("Выберите источник для сравнения:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Добро пожаловать! Введите адрес, чтобы получить информацию об объекте недвижимости.")
 
 app = ApplicationBuilder().token(os.getenv("TELEGRAM_BOT_TOKEN")).build()
 app.add_handler(CommandHandler("start", start_command))
