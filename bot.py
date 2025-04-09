@@ -4,6 +4,7 @@ import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 import requests
+from bs4 import BeautifulSoup
 from io import BytesIO
 import pandas as pd
 from fpdf import FPDF
@@ -16,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 GEOCODER_URL = "https://geocode-maps.yandex.ru/1.x/"
-ROSREESTR_API_URL = "https://rosreestr-integration.example.com/api/v1/lookup"
 
 async def fetch_coordinates(address):
     params = {
@@ -85,21 +85,32 @@ async def fetch_district_and_metro(lat, lon):
         logger.error(f"Ошибка при получении округа/метро: {e}")
         return None, None
 
-async def fetch_rosreestr_data(lat, lon):
+def fetch_owner_info(cad_number):
     try:
-        response = requests.get(ROSREESTR_API_URL, params={"lat": lat, "lon": lon})
-        response.raise_for_status()
-        return response.json()
+        url = f"https://egrp365.ru/cadaster/{cad_number}/"
+        response = requests.get(url, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        info_div = soup.find("div", class_="object-right")
+        if not info_div:
+            return None
+        text = info_div.get_text("\n", strip=True)
+        for line in text.split("\n"):
+            if "Правообладатель" in line or "Собственник" in line:
+                return line
+        return None
     except Exception as e:
-        logger.error(f"Ошибка при обращении к Росреестру: {e}")
+        logger.error(f"Ошибка при парсинге egrp365: {e}")
         return None
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = [
-        [InlineKeyboardButton("Поиск по адресу", callback_data=json.dumps({"action": "search_by_address"}))],
-        [InlineKeyboardButton("Поиск по кадастровому номеру", callback_data=json.dumps({"action": "search_by_cadastral"}))]
+        [InlineKeyboardButton("🔍 Поиск по адресу", callback_data=json.dumps({"action": "search_by_address"}))],
+        [InlineKeyboardButton("🧾 Поиск по кадастровому номеру", callback_data=json.dumps({"action": "search_by_cadastral"}))]
     ]
-    await update.message.reply_text("Выберите способ поиска:", reply_markup=InlineKeyboardMarkup(buttons))
+    await update.message.reply_text(
+        "👋 Привет! Я бот для анализа недвижимости в Москве.\n\nЯ помогу найти адрес, округ, метро, аналоги, объекты внутри, правообладателя и многое другое 📍",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -125,11 +136,30 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action == "analogs":
         lat, lon = data['lat'], data['lon']
         keyboard = [
-            [InlineKeyboardButton("Авито", url=f"https://www.avito.ru/moskva/nedvizhimost?p=1&q=&location={lat}%2C{lon}"),
-             InlineKeyboardButton("Циан", url=f"https://www.cian.ru/cat.php?deal_type=sale&region=1&center={lon},{lat}"),
-             InlineKeyboardButton("Яндекс", url=f"https://realty.yandex.ru/moskva/?ll={lon}%2C{lat}&search_type=geo")]
+            [InlineKeyboardButton("🏘 Авито", url=f"https://www.avito.ru/moskva/nedvizhimost?p=1&q=&location={lat}%2C{lon}"),
+             InlineKeyboardButton("📍 Циан", url=f"https://www.cian.ru/cat.php?deal_type=sale&region=1&center={lon},{lat}"),
+             InlineKeyboardButton("🏡 Яндекс", url=f"https://realty.yandex.ru/moskva/?ll={lon}%2C{lat}&search_type=geo")]
         ]
-        await query.message.reply_text("Выберите источник для сравнения:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.message.reply_text("💰 Выберите источник для сравнения:", reply_markup=InlineKeyboardMarkup(keyboard))
+    elif action == "owner_info":
+        cad_number = data.get("cad")
+        if not cad_number:
+            await query.message.reply_text("Не найден кадастровый номер.")
+            return
+        buttons = [
+            [InlineKeyboardButton("🔗 EGRP365", url=f"https://egrp365.ru/cadaster/{cad_number}/")],
+            [InlineKeyboardButton("📘 Росреестр", url=f"https://rosreestr.gov.ru/wps/portal/p/cc_ib_portal_services/!ut/p/z1/04_Sj9CPykssy0xPLMnMz0vMAfIjo8ziLQIsnQ28nQ183c3cXAwcQ81cjMyNvA0MfM30wwkpiAJKG-AAjgZA_VFgJcEK2QZ6YGUGan5lQkFqUmF-XkpmXrJmXr52RX5AdFQkA9pSjKs!/"),
+            [InlineKeyboardButton("🏢 Реформа ЖКХ", url=f"https://www.reformagkh.ru/search/houses?query={cad_number}")],
+            [InlineKeyboardButton("🤖 Автоматически", callback_data=json.dumps({"action": "fetch_owner", "cad": cad_number}))]
+        ]
+        await query.message.reply_text("Выберите источник или автоматический поиск:", reply_markup=InlineKeyboardMarkup(buttons))
+    elif action == "fetch_owner":
+        cad_number = data.get("cad")
+        result = fetch_owner_info(cad_number)
+        if result:
+            await query.message.reply_text(f"📄 Правообладатель: {result}")
+        else:
+            await query.message.reply_text("❌ Не удалось получить информацию о правообладателе.")
 
 async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
@@ -154,35 +184,34 @@ async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def process_selected_address(update: Update, context: ContextTypes.DEFAULT_TYPE, selected):
     lat, lon = selected['lat'], selected['lon']
     district, metro = await fetch_district_and_metro(lat, lon)
-    rosreestr_data = await fetch_rosreestr_data(lat, lon)
 
-    info_parts = [f"Найден адрес: {selected['address']}"]
+    info_parts = [f"📍 Найден адрес: {selected['address']}"]
     if district:
-        info_parts.append(f"Округ: {district}")
+        info_parts.append(f"🏙️ Округ: {district}")
     if metro:
-        info_parts.append(f"Ближайшее метро: {metro}")
-    if rosreestr_data:
-        if rosreestr_data.get('cadastral_number'):
-            info_parts.append(f"Кадастровый номер: {rosreestr_data['cadastral_number']}")
-        if rosreestr_data.get('area'):
-            info_parts.append(f"Площадь: {rosreestr_data['area']} кв.м")
-        if rosreestr_data.get('purpose'):
-            info_parts.append(f"Назначение: {rosreestr_data['purpose']}")
+        info_parts.append(f"🚇 Ближайшее метро: {metro}")
 
-    buttons = [
-        [InlineKeyboardButton("Яндекс Карты", url=f"https://yandex.ru/maps/?ll={lon},{lat}&z=18"),
-         InlineKeyboardButton("Росреестр", url=f"https://pkk.rosreestr.ru/#/?lat={lat}&lon={lon}&z=18")],
-        [InlineKeyboardButton("Аналоги по цене и площади", callback_data=json.dumps({"action": "analogs", "lat": lat, "lon": lon}))],
-        [InlineKeyboardButton("Объекты внутри", callback_data="show_units")],
-        [InlineKeyboardButton("Земельный участок", callback_data="show_land")],
-        [InlineKeyboardButton("Выгрузить в PDF", callback_data="export_pdf"),
-         InlineKeyboardButton("Выгрузить в Excel", callback_data="export_excel")]
+    map_buttons = [
+        InlineKeyboardButton("🗺️ Яндекс Карты", url=f"https://yandex.ru/maps/?ll={lon},{lat}&z=18"),
+        InlineKeyboardButton("🧾 Росреестр", url=f"https://pkk.rosreestr.ru/#/?lat={lat}&lon={lon}&z=18")
     ]
 
+    analogs_button = InlineKeyboardButton(
+        text="💰 Аналоги по цене и площади",
+        callback_data=json.dumps({"action": "analogs", "lat": lat, "lon": lon})
+    )
+
+    owner_button = InlineKeyboardButton(
+        text="📄 Правообладатель",
+        callback_data=json.dumps({"action": "owner_info", "cad": "77:01:000401:999"})
+    )
+
+    photo_url = f"https://static-maps.yandex.ru/1.x/?lang=ru_RU&ll={lon},{lat}&z=16&size=450,250&l=map&pt={lon},{lat},pm2rdm"
+
     await update.message.reply_photo(
-        photo=f"https://static-maps.yandex.ru/1.x/?lang=ru_RU&ll={lon},{lat}&z=16&size=450,250&l=map",
+        photo=photo_url,
         caption="\n".join(info_parts),
-        reply_markup=InlineKeyboardMarkup(buttons)
+        reply_markup=InlineKeyboardMarkup([map_buttons, [analogs_button], [owner_button]])
     )
 
 app = ApplicationBuilder().token(os.getenv("TELEGRAM_BOT_TOKEN")).build()
