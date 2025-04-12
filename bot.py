@@ -146,12 +146,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not cad_number:
             await query.message.reply_text("Не найден кадастровый номер.")
             return
-        buttons = [
+    buttons = [
             [InlineKeyboardButton("🔗 EGRP365", url=f"https://egrp365.ru/cadaster/{cad_number}/")],
             [InlineKeyboardButton("📘 Росреестр", url=f"https://rosreestr.gov.ru/wps/portal/p/cc_ib_portal_services/!ut/p/z1/04_Sj9CPykssy0xPLMnMz0vMAfIjo8ziLQIsnQ28nQ183c3cXAwcQ81cjMyNvA0MfM30wwkpiAJKG-AAjgZA_VFgJcEK2QZ6YGUGan5lQkFqUmF-XkpmXrJmXr52RX5AdFQkA9pSjKs!/"),
             [InlineKeyboardButton("🏢 Реформа ЖКХ", url=f"https://www.reformagkh.ru/search/houses?query={cad_number}")],
             [InlineKeyboardButton("🤖 Автоматически", callback_data=json.dumps({"action": "fetch_owner", "cad": cad_number}))]
-    ]
+     ]
         await query.message.reply_text("Выберите источник или автоматический поиск:", reply_markup=InlineKeyboardMarkup(buttons))
     elif action == "fetch_owner":
         cad_number = data.get("cad")
