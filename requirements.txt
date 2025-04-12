@@ -3,3 +3,5 @@ requests
 pandas
 fpdf
 rapidfuzz
+beautifulsoup4
+lxml
